@@ -1,0 +1,6 @@
+#!/bin/bash
+
+gcc main.c -Wall &&
+mv a.out ff &&
+cp ff ~/Path && 
+chmod +x ~/Path/ff 

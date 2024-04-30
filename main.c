@@ -9,8 +9,14 @@
 #include <fts.h>
 
 const char* query;
+int query_len = 0;
 
 #define MAX_THREADS 50
+
+#define NO_MATCH      0
+#define PARTIAL_MATCH 1
+#define EXACT_MATCH   2
+
 pthread_t threads[MAX_THREADS] = { NULL };
 
 struct search_args {
@@ -18,7 +24,42 @@ struct search_args {
     int depth;
 };
 
-void* walkdir(void* args) {
+struct results_t {
+    int p_count;
+    int e_count;
+    int p_cap;
+    int e_cap;
+    char** partial;
+    char** exact;
+};
+
+struct results_t results;
+pthread_mutex_t results_mutex;
+
+const int NUM_IGNORED_DIRS = 5;
+const char* ignored_dirs[] = {
+    ".",
+    "..",
+    ".git",
+    "node_modules",
+    "yarn"
+};
+
+// 0 = no match, 1 = partial match, 2 = exact match
+int check_for_match(const char* fn) {
+    char* index = strstr(fn, query);
+    if (index != NULL) {
+        if (strlen(fn) == query_len) {
+            return EXACT_MATCH;
+        } else {
+            return PARTIAL_MATCH; 
+        }
+    } else {
+        return NO_MATCH; 
+    }
+}
+
+void* searchdir(void* args) {
     char* path = ((struct search_args*)args)->path;
     int depth = ((struct search_args*)args)->depth;
 
@@ -29,7 +70,6 @@ void* walkdir(void* args) {
     while ((dir = opendir(path)) == NULL) {
         if (errno == EMFILE) {
             if (retries == 100) {
-                printf("Too many retries, exiting...\n");
                 return NULL;
             }
             usleep(1000 * 5);
@@ -46,12 +86,14 @@ void* walkdir(void* args) {
 
     while ((entry = readdir(dir)) != NULL) {
         if (entry->d_type == DT_DIR) {
-            if (strcmp(entry->d_name, ".") == 0 || 
-                strcmp(entry->d_name, "..") == 0 || 
-                strcmp(entry->d_name, ".git") == 0 || 
-                strcmp(entry->d_name, "node_modules") == 0 || 
-                strcmp(entry->d_name, "yarn") == 0 
-                ) {
+            char skip = 0;
+            for (int i = 0; i < NUM_IGNORED_DIRS; i++) {
+                if (strcmp(entry->d_name, ignored_dirs[i]) == 0) {
+                    skip = 1;
+                    break;
+                }
+            }
+            if (skip) {
                 continue;
             }
 
@@ -68,8 +110,49 @@ void* walkdir(void* args) {
                 dirs = realloc(dirs, sizeof(char*) * dir_cap);
             }
         } else {
-            if (strcmp(entry->d_name, query) == 0) {
-                printf("Found: %s/%s\n", path, entry->d_name);
+            int res = check_for_match(entry->d_name);
+            if (res > NO_MATCH) {
+                // printf("%s/%s\n", path, entry->d_name);
+                char name[1024];
+                snprintf(name, sizeof(name), "%s/%s", path, entry->d_name);
+
+                pthread_mutex_lock(&results_mutex);
+                
+                char** list = NULL;
+                int* count = NULL;
+                int* cap = NULL;
+
+                if (res == PARTIAL_MATCH) {
+                    list = results.partial;
+                    count = &results.p_count;
+                    cap = &results.p_cap;
+                } else {
+                    list = results.exact;
+                    count = &results.e_count;
+                    cap = &results.e_cap;
+                }
+
+                list[*count] = malloc(strlen(name) + 1);
+                strcpy(list[*count], name);
+                list[*count][strlen(name)] = '\0';
+                (*count)++;
+                if (*count == *cap) {
+                    *cap *= 2;
+                    list = realloc(list, sizeof(char*) * *cap);
+                    if (list == NULL) {
+                        printf("realloc failed\n");
+                        pthread_mutex_unlock(&results_mutex);
+                        closedir(dir);
+                        exit(EXIT_FAILURE);
+                    }
+                    if (res == PARTIAL_MATCH) {
+                        results.partial = list;
+                    } else {
+                        results.exact = list;
+                    }
+                }
+
+                pthread_mutex_unlock(&results_mutex);
             }
         }
     }
@@ -80,54 +163,27 @@ void* walkdir(void* args) {
         struct search_args* args = malloc(sizeof(struct search_args));
         args->path = dirs[i];
         args->depth = depth + 1;
-        if (depth <= 1 && i < MAX_THREADS) {
+        if (depth <= 2 && i < MAX_THREADS) {
             pthread_t thread_id;
-            pthread_create(&thread_id, NULL, walkdir, args);
+            pthread_create(&thread_id, NULL, searchdir, args);
             threads[i] = thread_id;
         } else {
-            walkdir(args);
+            searchdir(args);
         }
     }
 
     return NULL;
 }
 
-int fts_find(char* const dir) {
-    FTS *ftsp;
-    FTSENT *p, *chp;
-    int fts_options = FTS_COMFOLLOW | FTS_LOGICAL | FTS_NOCHDIR;
-
-    char** args = NULL;
-    args = malloc(sizeof(char*) * 1);
-    args[0] = malloc(strlen(dir) + 1);
-    strcpy(args[0], dir);
-
-    if ((ftsp = fts_open(args, fts_options, NULL)) == NULL) {
-          printf("fts_open failed\n");
-          return -1;
-    }
-
-    chp = fts_children(ftsp, 0);
-    if (chp == NULL) {
-          return 0;               /* no files to traverse */
-    }
-    while ((p = fts_read(ftsp)) != NULL) {
-          switch (p->fts_info) {
-          case FTS_D:
-                  printf("d %s\n", p->fts_path);
-                  break;
-          case FTS_F:
-                  printf("f %s\n", p->fts_path);
-                  break;
-          default:
-                  break;
-          }
-    }
-    fts_close(ftsp);
+int init_results() {
+    results.p_count = 0;
+    results.e_count = 0;
+    results.p_cap = 50;
+    results.e_cap = 50;
+    results.partial = malloc(sizeof(char*) * results.p_cap);
+    results.exact = malloc(sizeof(char*) * results.e_cap);
     return 0;
 }
-
-#define CUSTOM 1
 
 int main(int argc, char** argv) {
     if (argc < 2) {
@@ -144,23 +200,33 @@ int main(int argc, char** argv) {
         query = argv[2];
     }
 
-#ifdef CUSTOM
-    printf("Running custom search\n");
+    query_len = strlen(query);
+
     struct search_args* args = malloc(sizeof(struct search_args));
     args->path = path;
     args->depth = 0;
 
-    walkdir(args);
+    init_results();
+
+    searchdir(args);
 
     for (int i = 0; i < MAX_THREADS; i++) {
         if (threads[i] != NULL) {
             pthread_join(threads[i], NULL);
         }
     }
-#else
-    printf("Running fts search\n");
-    fts_find(path);
-#endif
+
+    for (int i = 0; i < results.p_count; i++) {
+        printf("%s\n", results.partial[i]);
+    }
+
+    if (results.e_count > 0) {
+        printf("---------------------\n");
+    }
+
+    for (int i = 0; i < results.e_count; i++) {
+        printf("%s\n", results.exact[i]);
+    }
 
     return 0;
 }
