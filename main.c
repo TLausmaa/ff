@@ -11,17 +11,21 @@
 const char* query;
 int query_len = 0;
 
-#define MAX_THREADS 50
-
+#define MAX_THREADS   200
 #define NO_MATCH      0
 #define PARTIAL_MATCH 1
 #define EXACT_MATCH   2
 
-pthread_t threads[MAX_THREADS] = { NULL };
+pthread_mutex_t threads_mutex;
+
+_Atomic int threads_created          = 0;
+_Atomic int thread_count             = 0;
+_Atomic int thread_creation_finished = 0;
 
 struct search_args {
     char* path;
     int depth;
+    int is_thread;
 };
 
 struct results_t {
@@ -41,27 +45,37 @@ const char* ignored_dirs[] = {
     ".",
     "..",
     ".git",
+    ".yarn",
     "node_modules",
-    "yarn"
 };
 
-// 0 = no match, 1 = partial match, 2 = exact match
 int check_for_match(const char* fn) {
     char* index = strstr(fn, query);
-    if (index != NULL) {
-        if (strlen(fn) == query_len) {
-            return EXACT_MATCH;
-        } else {
-            return PARTIAL_MATCH; 
-        }
-    } else {
-        return NO_MATCH; 
+
+    if (index == NULL) {
+        return NO_MATCH;
     }
+
+    if (strlen(fn) == query_len) {
+        return EXACT_MATCH;
+    } else {
+        return PARTIAL_MATCH; 
+    }
+}
+
+void str_arr_add(char** paths, int* count, char* path, char* filename) {
+    char filepath[1024];
+    snprintf(filepath, sizeof(filepath), "%s/%s", path, filename);
+    paths[*count] = malloc(strlen(filepath) + 1);
+    strcpy(paths[*count], filepath);
+    paths[*count][strlen(filepath)] = '\0';
+    (*count)++;
 }
 
 void* searchdir(void* args) {
     char* path = ((struct search_args*)args)->path;
     int depth = ((struct search_args*)args)->depth;
+    int is_thread = ((struct search_args*)args)->is_thread;
 
     DIR* dir;
     struct dirent* entry;
@@ -97,25 +111,14 @@ void* searchdir(void* args) {
                 continue;
             }
 
-            char pathbuf[1024];
-            snprintf(pathbuf, sizeof(pathbuf), "%s/%s", path, entry->d_name);
-            
-            dirs[dir_count] = malloc(strlen(pathbuf) + 1);
-            strcpy(dirs[dir_count], pathbuf);
-            dirs[dir_count][strlen(pathbuf)] = '\0';
-            dir_count++;
-
+            str_arr_add(dirs, &dir_count, path, entry->d_name);
             if (dir_count == dir_cap) {
                 dir_cap += 10;
                 dirs = realloc(dirs, sizeof(char*) * dir_cap);
             }
         } else {
             int res = check_for_match(entry->d_name);
-            if (res > NO_MATCH) {
-                // printf("%s/%s\n", path, entry->d_name);
-                char name[1024];
-                snprintf(name, sizeof(name), "%s/%s", path, entry->d_name);
-
+            if (res != NO_MATCH) {
                 pthread_mutex_lock(&results_mutex);
                 
                 char** list = NULL;
@@ -132,10 +135,7 @@ void* searchdir(void* args) {
                     cap = &results.e_cap;
                 }
 
-                list[*count] = malloc(strlen(name) + 1);
-                strcpy(list[*count], name);
-                list[*count][strlen(name)] = '\0';
-                (*count)++;
+                str_arr_add(list, count, path, entry->d_name);
                 if (*count == *cap) {
                     *cap *= 2;
                     list = realloc(list, sizeof(char*) * *cap);
@@ -163,31 +163,56 @@ void* searchdir(void* args) {
         struct search_args* args = malloc(sizeof(struct search_args));
         args->path = dirs[i];
         args->depth = depth + 1;
-        if (depth <= 2 && i < MAX_THREADS) {
+        args->is_thread = 0;
+
+        if (threads_created < MAX_THREADS) {
+            args->is_thread = 1;
             pthread_t thread_id;
             pthread_create(&thread_id, NULL, searchdir, args);
-            threads[i] = thread_id;
+            thread_count++;
+            threads_created++;
         } else {
+            thread_creation_finished = 1;
             searchdir(args);
         }
+    }
+
+    if (is_thread == 1) {
+        pthread_mutex_lock(&threads_mutex);
+        thread_count--;
+        pthread_mutex_unlock(&threads_mutex);
     }
 
     return NULL;
 }
 
-int init_results() {
+void init_results() {
     results.p_count = 0;
     results.e_count = 0;
     results.p_cap = 50;
     results.e_cap = 50;
     results.partial = malloc(sizeof(char*) * results.p_cap);
     results.exact = malloc(sizeof(char*) * results.e_cap);
-    return 0;
+}
+
+void print_results() {
+    for (int i = 0; i < results.p_count; i++) {
+        printf("%s\n", results.partial[i]);
+    }
+
+    if (results.e_count > 0) {
+        printf("----------------------------------------\n");
+    }
+
+    for (int i = 0; i < results.e_count; i++) {
+        printf("%s\n", results.exact[i]);
+    }
 }
 
 int main(int argc, char** argv) {
     if (argc < 2) {
-        fprintf(stderr, "Usage: %s <path> <query>\n", argv[0]);
+        fprintf(stderr, "Usage: %s <query>\n", argv[0]);
+        fprintf(stderr, "       %s <path> <query>\n", argv[0]);
         return 1;
     }
 
@@ -205,28 +230,16 @@ int main(int argc, char** argv) {
     struct search_args* args = malloc(sizeof(struct search_args));
     args->path = path;
     args->depth = 0;
+    args->is_thread = 0;
 
     init_results();
-
     searchdir(args);
 
-    for (int i = 0; i < MAX_THREADS; i++) {
-        if (threads[i] != NULL) {
-            pthread_join(threads[i], NULL);
-        }
+    while (thread_count > 0 || thread_creation_finished == 0) {
+        usleep(1000 * 5);
     }
 
-    for (int i = 0; i < results.p_count; i++) {
-        printf("%s\n", results.partial[i]);
-    }
-
-    if (results.e_count > 0) {
-        printf("---------------------\n");
-    }
-
-    for (int i = 0; i < results.e_count; i++) {
-        printf("%s\n", results.exact[i]);
-    }
+    print_results();
 
     return 0;
 }
