@@ -17,9 +17,8 @@ int query_len = 0;
 pthread_mutex_t threads_mutex;
 pthread_mutex_t results_mutex;
 
-_Atomic int threads_created          = 0;
-_Atomic int thread_count             = 0;
-_Atomic int thread_creation_finished = 0;
+_Atomic int threads_created = 0;
+_Atomic int thread_count    = 0;
 
 struct search_args_t {
     char* path;
@@ -54,6 +53,25 @@ const char* ignored_dirs[] = {
     ".yarn",
     "node_modules",
 };
+
+/* queue implementation */
+
+_Atomic int qcount = 0;
+pthread_mutex_t q_mutex;
+
+void add_q(void) {
+    pthread_mutex_lock(&q_mutex);
+    qcount++;
+    pthread_mutex_unlock(&q_mutex);
+}
+
+void pop_q(void) {
+    pthread_mutex_lock(&q_mutex);
+    qcount--;
+    pthread_mutex_unlock(&q_mutex);
+}
+
+/* end queue implementation */
 
 int is_ignored_filename(const char* filename) {
     for (int i = 0; i < exec_args.num_ignored_files; i++) {
@@ -198,13 +216,13 @@ void* searchdir(void* args) {
         args->is_thread = 0;
 
         if (threads_created < MAX_THREADS) {
+            add_q();
+            thread_count++;
+            threads_created++;
             args->is_thread = 1;
             pthread_t thread_id;
             pthread_create(&thread_id, NULL, searchdir, args);
-            thread_count++;
-            threads_created++;
         } else {
-            thread_creation_finished = 1;
             searchdir(args);
         }
     }
@@ -213,6 +231,7 @@ void* searchdir(void* args) {
         pthread_mutex_lock(&threads_mutex);
         thread_count--;
         pthread_mutex_unlock(&threads_mutex);
+        pop_q();
     }
 
     return NULL;
@@ -308,8 +327,7 @@ int main(int argc, char** argv) {
         print_help(argc, argv);
         return 0;
     } 
-    printf("path %s\n", exec_args.path);
-    printf("query %s\n", exec_args.query);
+    
     query_len = strlen(exec_args.query);
 
     struct search_args_t* sargs = malloc(sizeof(struct search_args_t));
@@ -320,7 +338,7 @@ int main(int argc, char** argv) {
     init_results();
     searchdir(sargs);
 
-    while (thread_count > 0 || thread_creation_finished == 0) {
+    while (qcount > 0) {
         usleep(1000 * 5);
     }
 
