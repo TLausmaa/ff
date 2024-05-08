@@ -49,7 +49,39 @@ const char* ignored_dirs[] = {
     "node_modules",
 };
 
+const int NUM_IGNORED_FILES = 1;
+const char* ignored_files[] = {
+    ".map" // ,
+    // ".js"
+};
+
+int is_ignored_filename(const char* filename) {
+    for (int i = 0; i < NUM_IGNORED_FILES; i++) {
+        int patternlen = strlen(ignored_files[i]);
+        int fnlen  = strlen(filename);
+        if (patternlen > fnlen) {
+            continue;
+        }
+        int found = 1;
+        for (int j = fnlen - patternlen; j < fnlen; j++) {
+            int k = j - (fnlen - patternlen);
+            if (filename[j] != ignored_files[i][k]) {
+                found = 0;
+                break;
+            }
+        }
+        if (found) {
+            return found;
+        }
+    }
+    return 0;
+}
+
 int check_for_match(const char* fn) {
+    if (is_ignored_filename(fn)) {
+        return NO_MATCH;
+    }
+    
     char* index = strstr(fn, query);
 
     if (index == NULL) {
@@ -224,6 +256,12 @@ int main(int argc, char** argv) {
         path = argv[1];
         query = argv[2];
     }
+
+    printf("path: %s, query: %s\n", path, query);
+    for (int i = 0; i < argc; i++) {
+        printf("arg is %s\n", argv[i]);
+    }
+    return 0;
 
     query_len = strlen(query);
 
