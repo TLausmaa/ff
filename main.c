@@ -225,7 +225,7 @@ void* searchdir(void* args) {
     return NULL;
 }
 
-void init_results() {
+void init_results(void) {
     results.p_count = 0;
     results.e_count = 0;
     results.p_cap = 50;
@@ -234,7 +234,7 @@ void init_results() {
     results.exact = malloc(sizeof(char*) * results.e_cap);
 }
 
-void print_results() {
+void print_results(void) {
     for (int i = 0; i < results.p_count; i++) {
         printf("%s\n", results.partial[i]);
     }
