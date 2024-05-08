@@ -8,19 +8,25 @@
 
 #include <fts.h>
 
-const char* query;
-int query_len = 0;
-
 #define MAX_THREADS   200
 #define NO_MATCH      0
 #define PARTIAL_MATCH 1
 #define EXACT_MATCH   2
 
+const char* query;
+int query_len = 0;
+
 pthread_mutex_t threads_mutex;
+pthread_mutex_t results_mutex;
 
 _Atomic int threads_created          = 0;
 _Atomic int thread_count             = 0;
 _Atomic int thread_creation_finished = 0;
+
+struct strarr {
+    char** arr;
+    int count;
+};
 
 struct search_args {
     char* path;
@@ -37,8 +43,15 @@ struct results_t {
     char** exact;
 };
 
+struct exec_args {
+    char*  path;
+    char*  query;
+    char** ignored_files;
+    int    num_ignored_files;
+};
+
+struct exec_args args;
 struct results_t results;
-pthread_mutex_t results_mutex;
 
 const int NUM_IGNORED_DIRS = 5;
 const char* ignored_dirs[] = {
@@ -49,15 +62,9 @@ const char* ignored_dirs[] = {
     "node_modules",
 };
 
-const int NUM_IGNORED_FILES = 1;
-const char* ignored_files[] = {
-    ".map" // ,
-    // ".js"
-};
-
 int is_ignored_filename(const char* filename) {
-    for (int i = 0; i < NUM_IGNORED_FILES; i++) {
-        int patternlen = strlen(ignored_files[i]);
+    for (int i = 0; i < args.num_ignored_files; i++) {
+        int patternlen = strlen(args.ignored_files[i]);
         int fnlen  = strlen(filename);
         if (patternlen > fnlen) {
             continue;
@@ -65,7 +72,7 @@ int is_ignored_filename(const char* filename) {
         int found = 1;
         for (int j = fnlen - patternlen; j < fnlen; j++) {
             int k = j - (fnlen - patternlen);
-            if (filename[j] != ignored_files[i][k]) {
+            if (filename[j] != args.ignored_files[i][k]) {
                 found = 0;
                 break;
             }
@@ -82,7 +89,7 @@ int check_for_match(const char* fn) {
         return NO_MATCH;
     }
     
-    char* index = strstr(fn, query);
+    char* index = strstr(fn, args.query);
 
     if (index == NULL) {
         return NO_MATCH;
@@ -241,43 +248,76 @@ void print_results() {
     }
 }
 
-int main(int argc, char** argv) {
+int parse_args(int argc, char** argv) {
     if (argc < 2) {
         fprintf(stderr, "Usage: %s <query>\n", argv[0]);
         fprintf(stderr, "       %s <path> <query>\n", argv[0]);
-        return 1;
+        return 0;
     }
 
-    char* path;
-    if (argc == 2) {
-        query = argv[1];
-        path = ".";
-    } else {
-        path = argv[1];
-        query = argv[2];
+    for (int i = 1; i < argc; i++) {
+        if (argv[i][0] != '-') {
+            if (args.path == NULL) {
+                args.path = malloc(strlen(argv[i]) + 1);
+                strcpy(args.path, argv[i]);
+                continue;
+            }
+            if (args.query == NULL) {
+                args.query = malloc(strlen(argv[i]) + 1);
+                strcpy(args.query, argv[i]);
+                continue;
+            }
+        }
+        
+        if (strcmp(argv[i], "-e") == 0) {
+            if (i == argc - 1) {
+                printf("Missing parameters for option -e\n");
+            }
+            char* ignored_files = argv[i+1];
+            char* tok = strtok(ignored_files, ",");
+            args.ignored_files = malloc(sizeof(char*) * 0);
+            int arr_len = 0;
+            while (tok != NULL) {
+                args.ignored_files = realloc(args.ignored_files, sizeof(char*) * (arr_len + 1));
+                args.ignored_files[arr_len] = malloc(strlen(tok) + 1);
+                strcpy(args.ignored_files[arr_len], tok);
+                arr_len++;
+                tok = strtok(NULL, ",");
+            }
+            args.num_ignored_files = arr_len;
+            i++;
+        }
     }
 
-    printf("path: %s, query: %s\n", path, query);
-    for (int i = 0; i < argc; i++) {
-        printf("arg is %s\n", argv[i]);
+    if (args.query == NULL && args.path != NULL) {
+        args.query = malloc(strlen(args.path) + 1);
+        strcpy(args.query, args.path);
+        args.path = realloc(args.path, 2 * sizeof(char));
+        strcpy(args.path, ".");
     }
-    return 0;
 
-    query_len = strlen(query);
+    return 1;
+}
 
-    struct search_args* args = malloc(sizeof(struct search_args));
-    args->path = path;
-    args->depth = 0;
-    args->is_thread = 0;
+int main(int argc, char** argv) {
+    if (!parse_args(argc, argv)) {
+        printf("parsing args failed\n");
+    } 
+
+    query_len = strlen(args.query);
+
+    struct search_args* sargs = malloc(sizeof(struct search_args));
+    sargs->path = args.path;
+    sargs->depth = 0;
+    sargs->is_thread = 0;
 
     init_results();
-    searchdir(args);
+    searchdir(sargs);
 
     while (thread_count > 0 || thread_creation_finished == 0) {
         usleep(1000 * 5);
     }
 
     print_results();
-
     return 0;
 }
