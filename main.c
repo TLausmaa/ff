@@ -131,7 +131,11 @@ int check_for_match(char* filename) {
 
 void str_arr_add(char** paths, int* count, char* path, char* filename) {
     char filepath[1024];
-    snprintf(filepath, sizeof(filepath), "%s/%s", path, filename);
+    if (strcmp(path, ".") == 0) {
+        snprintf(filepath, sizeof(filepath), "%s", filename);
+    } else {
+        snprintf(filepath, sizeof(filepath), "%s/%s", path, filename);
+    }
     paths[*count] = malloc(strlen(filepath) + 1);
     strcpy(paths[*count], filepath);
     paths[*count][strlen(filepath)] = '\0';
