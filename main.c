@@ -5,6 +5,7 @@
 #include <pthread.h>
 #include <unistd.h>
 #include <errno.h>
+#include <ctype.h>
 
 #define MAX_THREADS   200
 #define NO_MATCH      0
@@ -12,7 +13,8 @@
 #define EXACT_MATCH   2
 
 const char* query;
-int query_len = 0;
+int query_len           = 0;
+int query_has_uppercase = 0;
 
 pthread_mutex_t threads_mutex;
 pthread_mutex_t results_mutex;
@@ -95,9 +97,23 @@ int is_ignored_filename(const char* filename) {
     return 0;
 }
 
-int check_for_match(const char* fn) {
+int check_for_match(char* filename) {
+    char* fn = filename;
+    int fnlen = strlen(fn);
+    
     if (is_ignored_filename(fn)) {
         return NO_MATCH;
+    }
+    
+    char fnlower[fnlen + 1];
+    if (!query_has_uppercase) {
+        // if query is written in all lowercase, assume case-insensitive search
+        // and convert filename to lowercase as well
+        for (int i = 0; i < fnlen; i++) {
+            fnlower[i] = tolower(fn[i]);
+        }
+        fnlower[fnlen] = '\0';
+        fn = fnlower;
     }
     
     char* index = strstr(fn, exec_args.query);
@@ -106,7 +122,7 @@ int check_for_match(const char* fn) {
         return NO_MATCH;
     }
 
-    if (strlen(fn) == query_len) {
+    if (fnlen == query_len) {
         return EXACT_MATCH;
     } else {
         return PARTIAL_MATCH; 
@@ -322,6 +338,7 @@ int parse_args(int argc, char** argv) {
     return 1;
 }
 
+
 int main(int argc, char** argv) {
     if (!parse_args(argc, argv)) {
         print_help(argc, argv);
@@ -329,6 +346,12 @@ int main(int argc, char** argv) {
     } 
     
     query_len = strlen(exec_args.query);
+    for (int i = 0; i < query_len; i++) {
+        if (isupper(exec_args.query[i])) {
+            query_has_uppercase = 1;
+            break;
+        }
+    }
 
     struct search_args_t* sargs = malloc(sizeof(struct search_args_t));
     sargs->path = exec_args.path;
