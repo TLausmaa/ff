@@ -7,14 +7,17 @@
 #include <errno.h>
 #include <ctype.h>
 
+#include "args.h"
+#include "match.h"
+#include "print.h"
+#include "main.h"
+
 #define MAX_THREADS   200
-#define NO_MATCH      0
-#define PARTIAL_MATCH 1
-#define EXACT_MATCH   2
 
 const char* query;
 int query_len           = 0;
 int query_has_uppercase = 0;
+struct exec_args_t exec_args;
 
 pthread_mutex_t threads_mutex;
 pthread_mutex_t results_mutex;
@@ -28,23 +31,6 @@ struct search_args_t {
     int is_thread;
 };
 
-struct results_t {
-    int p_count;
-    int e_count;
-    int p_cap;
-    int e_cap;
-    char** partial;
-    char** exact;
-};
-
-struct exec_args_t {
-    char*  path;
-    char*  query;
-    char** ignored_files;
-    int    num_ignored_files;
-};
-
-struct exec_args_t exec_args;
 struct results_t results;
 
 const int NUM_IGNORED_DIRS = 5;
@@ -55,6 +41,8 @@ const char* ignored_dirs[] = {
     ".yarn",
     "node_modules",
 };
+
+void count_file_type(char* fn);
 
 /* queue implementation */
 
@@ -75,59 +63,6 @@ void pop_q(void) {
 
 /* end queue implementation */
 
-int is_ignored_filename(const char* filename) {
-    for (int i = 0; i < exec_args.num_ignored_files; i++) {
-        int patternlen = strlen(exec_args.ignored_files[i]);
-        int fnlen  = strlen(filename);
-        if (patternlen > fnlen) {
-            continue;
-        }
-        int found = 1;
-        for (int j = fnlen - patternlen; j < fnlen; j++) {
-            int k = j - (fnlen - patternlen);
-            if (filename[j] != exec_args.ignored_files[i][k]) {
-                found = 0;
-                break;
-            }
-        }
-        if (found) {
-            return found;
-        }
-    }
-    return 0;
-}
-
-int check_for_match(char* filename) {
-    char* fn = filename;
-    int fnlen = strlen(fn);
-    
-    if (is_ignored_filename(fn)) {
-        return NO_MATCH;
-    }
-    
-    char fnlower[fnlen + 1];
-    if (!query_has_uppercase) {
-        // if query is written in all lowercase, assume case-insensitive search
-        // and convert filename to lowercase as well
-        for (int i = 0; i < fnlen; i++) {
-            fnlower[i] = tolower(fn[i]);
-        }
-        fnlower[fnlen] = '\0';
-        fn = fnlower;
-    }
-    
-    char* index = strstr(fn, exec_args.query);
-
-    if (index == NULL) {
-        return NO_MATCH;
-    }
-
-    if (fnlen == query_len) {
-        return EXACT_MATCH;
-    } else {
-        return PARTIAL_MATCH; 
-    }
-}
 
 void str_arr_add(char** paths, int* count, char* path, char* filename) {
     char filepath[1024];
@@ -187,6 +122,7 @@ void* searchdir(void* args) {
                 dirs = realloc(dirs, sizeof(char*) * dir_cap);
             }
         } else {
+            count_file_type(entry->d_name);
             int res = check_for_match(entry->d_name);
             if (res != NO_MATCH) {
                 pthread_mutex_lock(&results_mutex);
@@ -257,36 +193,44 @@ void* searchdir(void* args) {
     return NULL;
 }
 
+void count_file_type(char* fn) {
+    int len = strlen(fn);
+    // char buf[5];
+    int idx = -1;
+    for (int i = len - 1; i > 0; i--) {
+        if (fn[i] == '.') {
+            idx = i;
+        }
+        if (len - 1 - i > 5) {
+            break;
+        }
+    }
+    char* p = &fn[idx];
+    printf("idx is %d, str is %s\n", idx, p);
+
+    /*
+    if (strcmp(".c", ext) == 0) {
+        results.stats->num_c++;
+        return;
+    } else if (strcmp(".ts", ext) == 0) {
+        results.stats->num_ts++;
+        return;
+    } else if (strcmp(".js", ext) == 0) {
+        results.stats->num_js++;
+    }*/
+}
+
 void init_results(void) {
     results.p_count = 0;
     results.e_count = 0;
-    results.p_cap = 50;
-    results.e_cap = 50;
+    results.p_cap   = 50;
+    results.e_cap   = 50;
     results.partial = malloc(sizeof(char*) * results.p_cap);
-    results.exact = malloc(sizeof(char*) * results.e_cap);
-}
-
-void print_results(void) {
-    for (int i = 0; i < results.p_count; i++) {
-        printf("%s\n", results.partial[i]);
-    }
-
-    if (results.e_count > 0) {
-        printf("----------------------------------------\n");
-    }
-
-    for (int i = 0; i < results.e_count; i++) {
-        printf("%s\n", results.exact[i]);
-    }
-}
-
-void print_help(int argc, char** argv) {
-    fprintf(stderr, "Usage: %s [query]\n", argv[0]);
-    fprintf(stderr, "       %s [path] [query]\n", argv[0]);
-    fprintf(stderr, "    Options:\n");
-    fprintf(stderr, "       [-e pattern]\n");
-    fprintf(stderr, "           Ignore files specified in pattern, where pattern is a comma-separated list of file name endings.\n");
-    fprintf(stderr, "           EXAMPLE: \"-e .js,.map\" would ignore any file ending with either '.js', or '.map'.\n");
+    results.exact   = malloc(sizeof(char*) * results.e_cap);
+    results.stats   = malloc(sizeof(struct dir_stats_t));
+    results.stats->num_ts = 0;
+    results.stats->num_js = 0;
+    results.stats->num_c  = 0;
 }
 
 int parse_args(int argc, char** argv) {
@@ -369,6 +313,6 @@ int main(int argc, char** argv) {
         usleep(1000 * 5);
     }
 
-    print_results();
+    print_results(&results);
     return 0;
 }

@@ -1,0 +1,5 @@
+#!/bin/bash
+
+cp a.out ff &&
+mv ff ~/Path && 
+chmod +x ~/Path/ff 
