@@ -39,8 +39,6 @@ const char* ignored_dirs[] = {
     "node_modules",
 };
 
-/* queue implementation */
-
 _Atomic int qcount = 0;
 pthread_mutex_t q_mutex;
 
@@ -55,9 +53,6 @@ void pop_q(void) {
     qcount--;
     pthread_mutex_unlock(&q_mutex);
 }
-
-/* end queue implementation */
-
 
 void str_arr_add(char** paths, int* count, char* path, char* filename) {
     char filepath[1024];
@@ -201,62 +196,8 @@ void init_results(void) {
     results.stats->num_c  = 0;
 }
 
-int parse_args(int argc, char** argv) {
-    if (argc < 2) {
-        return 0;
-    }
-
-    if (strcmp(argv[1], "help") == 0 || strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-h") == 0) {
-        return 0;
-    }
-
-    for (int i = 1; i < argc; i++) {
-        if (argv[i][0] != '-') {
-            if (exec_args.path == NULL) {
-                exec_args.path = malloc(strlen(argv[i]) + 1);
-                strcpy(exec_args.path, argv[i]);
-                continue;
-            }
-            if (exec_args.query == NULL) {
-                exec_args.query = malloc(strlen(argv[i]) + 1);
-                strcpy(exec_args.query, argv[i]);
-                continue;
-            }
-        }
-        
-        if (strcmp(argv[i], "-e") == 0) {
-            if (i == argc - 1) {
-                printf("Missing parameters for option -e\n");
-            }
-            char* ignored_files = argv[i+1];
-            char* tok = strtok(ignored_files, ",");
-            exec_args.ignored_files = malloc(sizeof(char*) * 0);
-            int arr_len = 0;
-            while (tok != NULL) {
-                exec_args.ignored_files = realloc(exec_args.ignored_files, sizeof(char*) * (arr_len + 1));
-                exec_args.ignored_files[arr_len] = malloc(strlen(tok) + 1);
-                strcpy(exec_args.ignored_files[arr_len], tok);
-                arr_len++;
-                tok = strtok(NULL, ",");
-            }
-            exec_args.num_ignored_files = arr_len;
-            i++;
-        }
-    }
-
-    if (exec_args.query == NULL && exec_args.path != NULL) {
-        exec_args.query = malloc(strlen(exec_args.path) + 1);
-        strcpy(exec_args.query, exec_args.path);
-        exec_args.path = realloc(exec_args.path, 2 * sizeof(char));
-        strcpy(exec_args.path, ".");
-    }
-
-    return 1;
-}
-
-
 int main(int argc, char** argv) {
-    if (!parse_args(argc, argv)) {
+    if (!parse_args(argc, argv, &exec_args)) {
         print_help(argc, argv);
         return 0;
     } 

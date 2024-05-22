@@ -32,6 +32,7 @@ extern int query_len;
 extern int query_has_uppercase;
 extern struct exec_args_t exec_args;
 
+int parse_args(int argc, char** argv, struct exec_args_t* args);
 int is_ignored_filename(const char* filename);
 int check_for_match(char* filename);
 void count_file_type(char* filename);

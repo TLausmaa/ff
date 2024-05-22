@@ -1,6 +1,7 @@
 #!/bin/sh
 
-gcc ./src/main.c ./src/match.c ./src/print.c ./src/meta.c -Wall -Wpedantic -Wextra \
+gcc ./src/main.c ./src/match.c ./src/print.c ./src/meta.c ./src/args.c \
+    -Wall -Wpedantic -Wextra \
     -Wformat=2 -Wno-unused-parameter -Wshadow \
     -Wwrite-strings -Wstrict-prototypes -Wold-style-definition \
     -Wredundant-decls -Wnested-externs -Wmissing-include-dirs \
