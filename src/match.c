@@ -1,8 +1,7 @@
 #include <string.h>
 #include <ctype.h>
 
-#include "args.h"
-#include "match.h"
+#include "main.h"
 
 int is_ignored_filename(const char* filename) {
     for (int i = 0; i < exec_args.num_ignored_files; i++) {

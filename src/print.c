@@ -1,5 +1,6 @@
 #include <stdio.h>
-#include "print.h"
+
+#include "main.h"
 
 void print_results(struct results_t* results) {
     for (int i = 0; i < results->p_count; i++) {

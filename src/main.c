@@ -7,9 +7,6 @@
 #include <errno.h>
 #include <ctype.h>
 
-#include "args.h"
-#include "match.h"
-#include "print.h"
 #include "main.h"
 
 #define MAX_THREADS   200
@@ -41,8 +38,6 @@ const char* ignored_dirs[] = {
     ".yarn",
     "node_modules",
 };
-
-void count_file_type(char* fn);
 
 /* queue implementation */
 
@@ -122,7 +117,7 @@ void* searchdir(void* args) {
                 dirs = realloc(dirs, sizeof(char*) * dir_cap);
             }
         } else {
-            count_file_type(entry->d_name);
+            // count_file_type(entry->d_name);
             int res = check_for_match(entry->d_name);
             if (res != NO_MATCH) {
                 pthread_mutex_lock(&results_mutex);
@@ -166,20 +161,20 @@ void* searchdir(void* args) {
     closedir(dir);
 
     for (int i = 0; i < dir_count; i++) {
-        struct search_args_t* args = malloc(sizeof(struct search_args_t));
-        args->path = dirs[i];
-        args->depth = depth + 1;
-        args->is_thread = 0;
+        struct search_args_t* new_args = malloc(sizeof(struct search_args_t));
+        new_args->path = dirs[i];
+        new_args->depth = depth + 1;
+        new_args->is_thread = 0;
 
         if (threads_created < MAX_THREADS) {
             add_q();
             thread_count++;
             threads_created++;
-            args->is_thread = 1;
+            new_args->is_thread = 1;
             pthread_t thread_id;
-            pthread_create(&thread_id, NULL, searchdir, args);
+            pthread_create(&thread_id, NULL, searchdir, new_args);
         } else {
-            searchdir(args);
+            searchdir(new_args);
         }
     }
 
@@ -191,33 +186,6 @@ void* searchdir(void* args) {
     }
 
     return NULL;
-}
-
-void count_file_type(char* fn) {
-    int len = strlen(fn);
-    // char buf[5];
-    int idx = -1;
-    for (int i = len - 1; i > 0; i--) {
-        if (fn[i] == '.') {
-            idx = i;
-        }
-        if (len - 1 - i > 5) {
-            break;
-        }
-    }
-    char* p = &fn[idx];
-    printf("idx is %d, str is %s\n", idx, p);
-
-    /*
-    if (strcmp(".c", ext) == 0) {
-        results.stats->num_c++;
-        return;
-    } else if (strcmp(".ts", ext) == 0) {
-        results.stats->num_ts++;
-        return;
-    } else if (strcmp(".js", ext) == 0) {
-        results.stats->num_js++;
-    }*/
 }
 
 void init_results(void) {
