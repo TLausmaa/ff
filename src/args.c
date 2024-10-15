@@ -31,19 +31,18 @@ int parse_args(int argc, char** argv, exec_args_t* args) {
             if (i == argc - 1) {
                 printf("Missing parameters for option -e\n");
             }
-            char* ignored_files = argv[i+1];
-            char* tok = strtok(ignored_files, ",");
-            args->ignored_files = malloc(sizeof(char*) * 0);
+
             int arr_len = 0;
-            while (tok != NULL) {
+            for (int j = i + 1; j < argc; j++) {
+                if (argv[j][0] == '-') {
+                    break;
+                }
                 args->ignored_files = realloc(args->ignored_files, sizeof(char*) * (arr_len + 1));
-                args->ignored_files[arr_len] = malloc(strlen(tok) + 1);
-                strcpy(args->ignored_files[arr_len], tok);
+                args->ignored_files[arr_len] = malloc(strlen(argv[j]) + 1);
+                strcpy(args->ignored_files[arr_len], argv[j]);
                 arr_len++;
-                tok = strtok(NULL, ",");
             }
             args->num_ignored_files = arr_len;
-            i++;
         } else if (strcmp(argv[i], "-g") == 0) {
             // printf("found option -g\n");
         }

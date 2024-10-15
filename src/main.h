@@ -17,7 +17,6 @@ typedef struct results_t {
     int e_cap;
     char** partial;
     char** exact;
-    dir_stats_t* stats;
 } results_t;
 
 typedef struct exec_args_t {
@@ -36,6 +35,5 @@ extern exec_args_t exec_args;
 int parse_args(int argc, char** argv, exec_args_t*);
 int is_ignored_filename(const char* filename);
 int check_for_match(char* filename);
-void count_file_type(char* filename, results_t*);
 void print_results(results_t*);
 void print_help(int argc, char** argv);

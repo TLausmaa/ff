@@ -112,7 +112,6 @@ void* searchdir(void* args) {
                 dirs = realloc(dirs, sizeof(char*) * dir_cap);
             }
         } else {
-            count_file_type(entry->d_name, &results);
             int res = check_for_match(entry->d_name);
             if (res != NO_MATCH) {
                 pthread_mutex_lock(&results_mutex);
@@ -190,10 +189,6 @@ void init_results(void) {
     results.e_cap   = 50;
     results.partial = malloc(sizeof(char*) * results.p_cap);
     results.exact   = malloc(sizeof(char*) * results.e_cap);
-    results.stats   = malloc(sizeof(dir_stats_t));
-    results.stats->num_ts = 0;
-    results.stats->num_js = 0;
-    results.stats->num_c  = 0;
 }
 
 int main(int argc, char** argv) {
