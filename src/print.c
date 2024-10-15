@@ -2,20 +2,14 @@
 
 #include "main.h"
 
-void print_results(struct results_t* results) {
+void print_results(results_t* results) {
     for (int i = 0; i < results->p_count; i++) {
         printf("%s\n", results->partial[i]);
-    }
-
-    if (results->e_count > 0) {
-        printf("----------------------------------------\n");
     }
 
     for (int i = 0; i < results->e_count; i++) {
         printf("%s\n", results->exact[i]);
     }
-
-    // printf("File types, c: %d, ts: %d, js: %d\n", results.stats->num_c, results.stats->num_ts, results.stats->num_js);
 }
 
 void print_help(int argc, char** argv) {

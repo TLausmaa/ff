@@ -14,7 +14,7 @@
 const char* query;
 int query_len           = 0;
 int query_has_uppercase = 0;
-struct exec_args_t exec_args;
+exec_args_t exec_args;
 
 pthread_mutex_t threads_mutex;
 pthread_mutex_t results_mutex;
@@ -22,13 +22,13 @@ pthread_mutex_t results_mutex;
 _Atomic int threads_created = 0;
 _Atomic int thread_count    = 0;
 
-struct search_args_t {
+typedef struct search_args_t {
     char* path;
     int depth;
     int is_thread;
-};
+} search_args_t;
 
-struct results_t results;
+results_t results;
 
 const int NUM_IGNORED_DIRS = 5;
 const char* ignored_dirs[] = {
@@ -68,9 +68,9 @@ void str_arr_add(char** paths, int* count, char* path, char* filename) {
 }
 
 void* searchdir(void* args) {
-    char* path = ((struct search_args_t*)args)->path;
-    int depth = ((struct search_args_t*)args)->depth;
-    int is_thread = ((struct search_args_t*)args)->is_thread;
+    char* path = ((search_args_t*)args)->path;
+    int depth = ((search_args_t*)args)->depth;
+    int is_thread = ((search_args_t*)args)->is_thread;
 
     DIR* dir;
     struct dirent* entry;
@@ -112,7 +112,7 @@ void* searchdir(void* args) {
                 dirs = realloc(dirs, sizeof(char*) * dir_cap);
             }
         } else {
-            // count_file_type(entry->d_name);
+            count_file_type(entry->d_name, &results);
             int res = check_for_match(entry->d_name);
             if (res != NO_MATCH) {
                 pthread_mutex_lock(&results_mutex);
@@ -156,7 +156,7 @@ void* searchdir(void* args) {
     closedir(dir);
 
     for (int i = 0; i < dir_count; i++) {
-        struct search_args_t* new_args = malloc(sizeof(struct search_args_t));
+        search_args_t* new_args = malloc(sizeof(search_args_t));
         new_args->path = dirs[i];
         new_args->depth = depth + 1;
         new_args->is_thread = 0;
@@ -190,7 +190,7 @@ void init_results(void) {
     results.e_cap   = 50;
     results.partial = malloc(sizeof(char*) * results.p_cap);
     results.exact   = malloc(sizeof(char*) * results.e_cap);
-    results.stats   = malloc(sizeof(struct dir_stats_t));
+    results.stats   = malloc(sizeof(dir_stats_t));
     results.stats->num_ts = 0;
     results.stats->num_js = 0;
     results.stats->num_c  = 0;
@@ -210,7 +210,7 @@ int main(int argc, char** argv) {
         }
     }
 
-    struct search_args_t* sargs = malloc(sizeof(struct search_args_t));
+    search_args_t* sargs = malloc(sizeof(search_args_t));
     sargs->path = exec_args.path;
     sargs->depth = 0;
     sargs->is_thread = 0;

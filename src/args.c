@@ -4,7 +4,7 @@
 
 #include "main.h"
 
-int parse_args(int argc, char** argv, struct exec_args_t* args) {
+int parse_args(int argc, char** argv, exec_args_t* args) {
     if (argc < 2) {
         return 0;
     }
@@ -44,6 +44,8 @@ int parse_args(int argc, char** argv, struct exec_args_t* args) {
             }
             args->num_ignored_files = arr_len;
             i++;
+        } else if (strcmp(argv[i], "-g") == 0) {
+            // printf("found option -g\n");
         }
     }
 
@@ -52,6 +54,9 @@ int parse_args(int argc, char** argv, struct exec_args_t* args) {
         strcpy(args->query, args->path);
         args->path = realloc(args->path, 2 * sizeof(char));
     }
+
+    // Always on, for now
+    args->smart_ignore = 1;
 
     return 1;
 }
