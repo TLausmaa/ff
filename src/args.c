@@ -4,6 +4,24 @@
 
 #include "main.h"
 
+void parse_following_args(int argc, char** argv, int start, int* num_parsed, char*** args_res) {
+    if (start > argc - 1) {
+        printf("Missing parameters for option %s\n", argv[start - 1]);
+        exit(EXIT_FAILURE);
+    }
+    int arr_len = 0;
+    for (int j = start; j < argc; j++) {
+        if (argv[j][0] == '-') {
+            break;
+        }
+        *args_res = realloc(*args_res, sizeof(char*) * (arr_len + 1));
+        (*args_res)[arr_len] = malloc(strlen(argv[j]) + 1);
+        strcpy((*args_res)[arr_len], argv[j]);
+        arr_len++;
+    }
+    *num_parsed = arr_len;
+}
+
 int parse_args(int argc, char** argv, exec_args_t* args) {
     if (argc < 2) {
         return 0;
@@ -26,25 +44,12 @@ int parse_args(int argc, char** argv, exec_args_t* args) {
                 continue;
             }
         }
-        
-        if (strcmp(argv[i], "-e") == 0) {
-            if (i == argc - 1) {
-                printf("Missing parameters for option -e\n");
-            }
-
-            int arr_len = 0;
-            for (int j = i + 1; j < argc; j++) {
-                if (argv[j][0] == '-') {
-                    break;
-                }
-                args->ignored_files = realloc(args->ignored_files, sizeof(char*) * (arr_len + 1));
-                args->ignored_files[arr_len] = malloc(strlen(argv[j]) + 1);
-                strcpy(args->ignored_files[arr_len], argv[j]);
-                arr_len++;
-            }
-            args->num_ignored_files = arr_len;
+       
+        if (strcmp(argv[i], "-o") == 0) {
+            parse_following_args(argc, argv, i + 1, &args->num_exclusive_files, &args->exclusive_files);
+        } else if (strcmp(argv[i], "-i") == 0) {
+            parse_following_args(argc, argv, i + 1, &args->num_ignored_files, &args->ignored_files);
         } else if (strcmp(argv[i], "-g") == 0) {
-            // printf("found option -g\n");
         }
     }
 

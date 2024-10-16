@@ -25,9 +25,37 @@ int is_ignored_filename(const char* filename) {
     return 0;
 }
 
+int is_exclusive_filename(const char* filename) {
+    for (int i = 0; i < exec_args.num_exclusive_files; i++) {
+        int patternlen = strlen(exec_args.exclusive_files[i]);
+        int fnlen  = strlen(filename);
+        if (patternlen > fnlen) {
+            continue;
+        }
+        int found = 1;
+        for (int j = fnlen - patternlen; j < fnlen; j++) {
+            int k = j - (fnlen - patternlen);
+            if (filename[j] != exec_args.exclusive_files[i][k]) {
+                found = 0;
+                break;
+            }
+        }
+        if (found) {
+            return found;
+        }
+    }
+    return 0;
+}
+
 int check_for_match(char* filename) {
     char* fn = filename;
     int fnlen = strlen(fn);
+
+    if (exec_args.num_exclusive_files > 0) {
+        if (!is_exclusive_filename(fn)) {
+            return NO_MATCH;
+        }
+    } 
     
     if (is_ignored_filename(fn)) {
         return NO_MATCH;

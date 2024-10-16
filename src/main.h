@@ -24,6 +24,8 @@ typedef struct exec_args_t {
     char*  query;
     char** ignored_files;
     int    num_ignored_files;
+    char** exclusive_files;
+    int    num_exclusive_files;
     int    smart_ignore;
 } exec_args_t;
 
